@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prestação de Contas</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        form {
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        table, th, td {
+            border: 1px solid black;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+        }
+        #total {
+            font-weight: bold;
+        }
+        button.remove {
+            background-color: black;
+            color: white;
+            border: none;
+            padding: 5px;
+            cursor: pointer;
+        }
+        button.remove:hover {
+            background-color: dimgray;
+        }
+        img {
+            max-width: 100px;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>Prestação de Contas</h2>
+
+    <form id="prestacaoForm">
+        <label for="data">Data:</label>
+        <input type="date" id="data" name="data" required>
+        <label for="descricao">Descrição:</label>
+        <input type="text" id="descricao" name="descricao" required>
+        <label for="valor">Valor (R$):</label>
+        <input type="number" id="valor" name="valor" step="0.01" required>
+        <label for="imagem">Imagem (opcional):</label>
+        <input type="file" id="imagem" accept="image/*">
+        <button type="button" onclick="adicionarItem()">Adicionar</button>
+    </form>
+
+    <h3>Planilha</h3>
+    <table id="tabelaPrestacao">
+        <thead>
+            <tr>
+                <th>Data</th>
+                <th>Descrição</th>
+                <th>Valor (R$)</th>
+                <th>Imagem</th>
+                <th>Ação</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Itens serão adicionados aqui -->
+        </tbody>
+    </table>
+
+    <p id="total">Total: R$ 0,00</p>
+
+    <button onclick="gerarPDF()">Gerar PDF</button>
+
+    <script>
+        let total = 0;
+        let itens = JSON.parse(localStorage.getItem('itens')) || [];
+
+        function adicionarItem() {
+            const data = document.getElementById("data").value;
+            const descricao = document.getElementById("descricao").value;
+            const valor = parseFloat(document.getElementById("valor").value);
+
+            const imagemInput = document.getElementById("imagem");
+            let imagemBase64 = "";
+            if (imagemInput.files.length > 0) {
+                const file = imagemInput.files[0];
+                const reader = new FileReader();
+                reader.onloadend = function() {
+                    imagemBase64 = reader.result;
+                    adicionarItemComImagem(data, descricao, valor, imagemBase64);
+                };
+                reader.readAsDataURL(file);
+            } else {
+                adicionarItemComImagem(data, descricao, valor, imagemBase64);
+            }
+        }
+
+        function adicionarItemComImagem(data, descricao, valor, imagemBase64) {
+            total += valor;
+            document.getElementById("total").innerText = `Total: R$ ${total.toFixed(2).replace('.', ',')}`;
+
+            itens.push({ data, descricao, valor, imagemBase64 });
+            salvarItens();
+            itens.sort((a, b) => new Date(a.data) - new Date(b.data));
+            atualizarTabela();
+
+            document.getElementById("prestacaoForm").reset();
+        }
+
+        function atualizarTabela() {
+            const tabela = document.getElementById("tabelaPrestacao").getElementsByTagName("tbody")[0];
+            tabela.innerHTML = '';
+
+            itens.forEach((item, index) => {
+                const novaLinha = tabela.insertRow();
+                const celulaData = novaLinha.insertCell(0);
+                const celulaDescricao = novaLinha.insertCell(1);
+                const celulaValor = novaLinha.insertCell(2);
+                const celulaImagem = novaLinha.insertCell(3);
+                const celulaRemover = novaLinha.insertCell(4);
+
+                celulaData.innerHTML = item.data;
+                celulaDescricao.innerHTML = item.descricao;
+                celulaValor.innerHTML = item.valor.toFixed(2).replace('.', ',');
+
+                if (item.imagemBase64) {
+                    const img = document.createElement("img");
+                    img.src = item.imagemBase64;
+                    celulaImagem.appendChild(img);
+                }
+
+                const botaoRemover = document.createElement("button");
+                botaoRemover.innerText = "Remover";
+                botaoRemover.className = "remove";
+                botaoRemover.onclick = function() {
+                    removerItem(index);
+                };
+                celulaRemover.appendChild(botaoRemover);
+            });
+        }
+
+        function removerItem(index) {
+            total -= itens[index].valor;
+            document.getElementById("total").innerText = `Total: R$ ${total.toFixed(2).replace('.', ',')}`;
+            itens.splice(index, 1);
+            salvarItens();
+            atualizarTabela();
+        }
+
+        function salvarItens() {
+            localStorage.setItem('itens', JSON.stringify(itens));
+        }
+
+        function calcularTotal() {
+            total = itens.reduce((acc, item) => acc + item.valor, 0);
+            document.getElementById("total").innerText = `Total: R$ ${total.toFixed(2).replace('.', ',')}`;
+        }
+
+        window.onload = function() {
+            atualizarTabela();
+            calcularTotal();
+        }
+
+        // Função para gerar o PDF
+        function gerarPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            let y = 10;
+
+            doc.setFontSize(18);
+            doc.text("Prestação de Contas", 10, y);
+            y += 10;
+
+            doc.setFontSize(12);
+            itens.forEach(item => {
+                doc.text(`Data: ${item.data}`, 10, y);
+                y += 6;
+                doc.text(`Descrição: ${item.descricao}`, 10, y);
+                y += 6;
+                doc.text(`Valor: R$ ${item.valor.toFixed(2).replace('.', ',')}`, 10, y);
+                y += 6;
+
+                if (item.imagemBase64) {
+                    doc.addImage(item.imagemBase64, 'JPEG', 10, y, 50, 50);
+                    y += 60;
+                }
+                y += 10;
+            });
+
+            doc.text(`Total: R$ ${total.toFixed(2).replace('.', ',')}`, 10, y);
+
+            doc.save("prestacao_contas.pdf");
+        }
+    </script>
+
+</body>
+</html>
